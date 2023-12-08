@@ -1,0 +1,114 @@
+---
+title: "506_final_project"
+author: "Zejia Liu"
+date: "2023-12-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Load necessary library
+library(MASS) # for the mvrnorm function
+library(dplyr)
+
+# Function to generate data with specified collinearity and error variance
+generate_data <- function(n, collinearity_level, error_variance) {
+  # Define the number of predictors
+  num_predictors <- 5 # Including both collinear and non-collinear variables
+  
+  # Define the mean and covariance matrix for predictors
+  mu <- rep(0, num_predictors)
+  Sigma <- matrix(collinearity_level, num_predictors, num_predictors)
+  diag(Sigma) <- 1
+  
+  # Set the off-diagonal elements for X4 and X5 to zero to make them independent
+  Sigma[4:5, ] <- 0
+  Sigma[, 4:5] <- 0
+  diag(Sigma) <- 1  # Reset the diagonal to 1 for variances of all variables including X4 and X5
+  
+  
+  # Generate correlated predictors
+  predictors <- mvrnorm(n = n, mu = mu, Sigma = Sigma)
+  
+  # Generate a response variable with specified error variance
+  beta <- runif(num_predictors, -1, 1)
+  response <- predictors %*% beta + rnorm(n, sd = sqrt(error_variance))
+  
+  return(data.frame(response, predictors))
+}
+
+# Simulation settings
+num_simulations <- 100
+sample_size <- 100
+collinearity_levels <- seq(0.1, 0.9, by = 0.2)
+error_variances <- c(1, 2, 5) # Different levels of error variance
+
+# Store results
+results <- list()
+
+# Run simulations
+for (error_variance in error_variances) {
+  for (collinearity in collinearity_levels) {
+    for (sim in 1:num_simulations) {
+      data <- generate_data(n = sample_size, collinearity_level = collinearity, error_variance = error_variance)
+      fit <- lm(response ~ ., data = data)
+      
+      results[[paste(collinearity, error_variance, sim, sep = "_")]] <- summary(fit)$coefficients
+    }
+  }
+}
+
+# Analyze results
+# Example: Plotting the coefficients or standard errors
+# This part will depend on what specific analysis you want to perform
+
+```
+
+
+
+```{r}
+library(ggplot2)
+
+# Convert results list to a dataframe for easier plotting
+results_df <- do.call(rbind, lapply(names(results), function(name) {
+  data <- as.data.frame(results[[name]])
+  data$CoefficientName <- rownames(data)
+  data$Simulation <- name
+  data
+}))
+results_df <- cbind(results_df, do.call(rbind, strsplit(names(results), "_", fixed = TRUE)))
+
+# Rename columns for clarity
+names(results_df)[7:9] <- c("CollinearityLevel", "ErrorVariance", "SimulationID")
+results_df$CollinearityLevel <- as.numeric(as.character(results_df$CollinearityLevel))
+
+# Calculate the mean of coefficient estimates and standard errors for each level of collinearity
+average_results <- results_df %>%
+  group_by(CollinearityLevel, CoefficientName) %>%
+  summarize(MeanEstimate = mean(Estimate), MeanStdError = mean(`Std. Error`))
+
+# Plot the average coefficient estimates vs. collinearity level
+ggplot(average_results, aes(x = CollinearityLevel, y = MeanEstimate, group = CoefficientName, color = CoefficientName)) +
+  geom_line() +
+  geom_point() +
+  theme_minimal() +
+  labs(title = "Average Regression Coefficients vs. Collinearity Level",
+       x = "Collinearity Level",
+       y = "Average Coefficient Estimate",
+       color = "Coefficient")
+
+# Plot the average standard errors vs. collinearity level
+ggplot(average_results, aes(x = CollinearityLevel, y = MeanStdError, group = CoefficientName, color = CoefficientName)) +
+  geom_line() +
+  geom_point() +
+  theme_minimal() +
+  labs(title = "Average Standard Errors of Coefficients vs. Collinearity Level",
+       x = "Collinearity Level",
+       y = "Average Standard Error",
+       color = "Coefficient")
+
+```
+
